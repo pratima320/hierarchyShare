@@ -1,0 +1,32 @@
+/* Date        Developer            Detail
+ * *************************************************************************************************
+ * 06/2018      Pratima S           This trigger uses UserAccessTriggerHelper class to perform some actions
+ *                                  on insert of user access record on Operational Hierarchy record
+ *                                  it creates a record for Hierarchy User Access under the corresponding
+ *                                  Hierarchy record with lookup to same user. 
+ *                                  Any deletion of user Access also deletes corresponding 
+ *                                  HUA records.      
+ * **************************************************************************************************
+ */
+
+trigger UserAccessTrigger on User_Access__c (after insert, after update, before delete) {
+    /*getting the custom settings for the switch dm healthcheck
+     */
+    Dm_Healthcheck__c dm = Dm_Healthcheck__c.getValues('userAccessInsert');
+    Boolean isOn = dm.isActive__c;
+    System.debug('Trigegr is active '+isOn);
+    if(Trigger.isUpdate || Trigger.isInsert){
+    if(isOn){
+        System.debug('Custom setting '+rkl__Hierarchy_Settings__c.getInstance().UserAccess__c);
+        UserAccessTriggerHelper.insertHierUserAccess(Trigger.New);
+    }
+    }
+    
+    if(Trigger.isDelete){
+        UserAccessTriggerHelper.deletehUserAccess(Trigger.Old);
+    }
+
+    
+    
+
+}
