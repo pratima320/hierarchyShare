@@ -1,0 +1,45 @@
+/*Modification date         Developer           Detail
+ *************************************************************************************************************************************************************
+   
+    06/15/2018              Pratima S           See the CorrectiveActionTriggerHelper for code,
+                                                Here we are only adding a switch using list type custom setting
+                                                to be able to activat/deactivate trigger in production 
+                                                with no code changes.
+                                                
+**************************************************************************************************************************************************************
+*/
+
+
+trigger CorrectiveActionTrigger on Corrective_Actions__c(after insert,after update, before delete){
+    
+ /* gettig custom setting values for the trigger switch from 
+    * dm healthcheck Dm_healthcheck__c is the name of custom setting
+    * and isActive__c is a checkbox field, corrActionInsert is a record with isActive__c = true
+    */
+    
+    Dm_healthcheck__c dmfhcIns = Dm_healthcheck__c.getValues('corrActionInsert');
+    Boolean insertBool = dmfhcIns.isActive__c;
+    
+    Dm_Healthcheck__c dmfhcDel = Dm_Healthcheck__c.getValues('corrActionDelete');
+    Boolean isOnDel = dmfhcDel.isActive__c;
+    
+     if(Trigger.isAfter){
+        if(Trigger.isInsert || Trigger.isUpdate){
+         
+            /* code for dm heathccheck corr actions
+             */
+            if(insertBool)
+            	PopulateUserResponsibleClass.openDmCorrectiveActions(Trigger.New);
+            
+        }
+    }
+    
+    if(trigger.isDelete && trigger.isbefore){
+       
+       if(isOnDel)
+           PopulateUserResponsibleClass.openDmCorrectiveActions(Trigger.Old); 
+        
+        
+    }
+    
+  }
