@@ -1,0 +1,115 @@
+/* Date        Developer            Detail
+ * *************************************************************************************************
+ * 06/2018      Pratima S           This class is used by userAccessTrigger 
+ *                                  on insert of user access record on Operational Hierarchy record
+ *                                  it creates a record for Hierarchy User Access under the corresponding
+ *                                  Hierarchy record with lookup to same user. 
+ *                                  Any deletion of user Access also deletes corresponding 
+ *                                  HUA records.      
+ * **************************************************************************************************
+ */
+
+public class UserAccessTriggerHelper {
+    
+    public static void insertHierUserAccess(List<User_Access__c> uaList){       
+        Map<Id, Operational_Hierarchy__c> opHierachies = new Map<Id, Operational_Hierarchy__c>([
+            SELECT Id, Node_Code__c, Hierarchy__c 
+            FROM Operational_Hierarchy__c 
+            WHERE Id IN (SELECT Operational_Hierarchy__c FROM User_Access__c WHERE Id IN :uaList)
+        ]);
+         System.debug('opHierachies '+opHierachies);
+        Map<Id, Set<Id>> huaToUser = new Map<Id, Set<Id>>();
+        for (Hierarchy_User_Access__c hua : [
+            SELECT Hierarchy__c, User__c
+            FROM Hierarchy_User_Access__c
+            WHERE Hierarchy__c
+            IN (SELECT Hierarchy__c FROM Operational_Hierarchy__c WHERE Id IN :opHierachies.keySet())
+        ]) {
+            if (huaToUser.containsKey(hua.Hierarchy__c)) {
+                huaToUser.get(hua.Hierarchy__c).add(hua.User__c);
+            } else {
+                huaToUser.put(hua.Hierarchy__c, new Set<Id>{ hua.User__c });
+            }
+        }
+        System.debug('huaToUser '+huaToUser);
+        
+        /*
+         * we need to traverse the maps we just built
+         * ua -> operation hierarchy -> hierarchy -> set of users already there
+         */
+        List<Hierarchy_User_Access__c> huas = new List<Hierarchy_User_Access__c>();
+        for (User_Access__c ua : uaList) {
+            Operational_Hierarchy__c opHierarchy = opHierachies.get(ua.Operational_Hierarchy__c);
+            if (opHierarchy != null && huaToUser.containsKey(opHierarchy.Hierarchy__c)) {
+                Set<Id> hierarchyUserIds = huaToUser.get(opHierarchy.Hierarchy__c);
+                if (!hierarchyUserIds.contains(ua.User__c)) {
+                    huas.add(new Hierarchy_User_Access__c(
+                        User__c = ua.User__c,
+                        Hierarchy__c = opHierarchy.Hierarchy__c
+                    ));
+                     System.debug('huas1 '+huas);
+                    /*
+                     * we need to add the new user into the set of users at the hierarchy already
+                     * this will prevent multiple entries from being created in cases
+                     * where the same user would be present in multiple user access records
+                     * in different operation hierarchies.
+                     */
+                    hierarchyUserIds.add(ua.User__c);
+                }
+            } else if (opHierarchy != null && !huaToUser.containsKey(opHierarchy.Hierarchy__c)) {
+                //its possible that there are no users at the hierarchy already ^
+                huas.add(new Hierarchy_User_Access__c(
+                    User__c = ua.User__c,
+                    Hierarchy__c = opHierarchy.Hierarchy__c
+                ));
+                 System.debug('huas2 '+huas);
+
+                //just like above since there were no users at the hierarchy we need to put the new user there
+                //to prevent duplicates
+                huaToUser.put(opHierarchy.Hierarchy__c, new Set<Id>{ ua.User__c });
+            }
+        }
+
+        try {
+            insert huas;
+        } catch (DmlException ex) {
+            for (User_Access__c ua : uaList) {
+                ua.addError(ex);
+            }
+        }     
+    }
+    /*
+     * we need to handle the situation where if user access is deleted, the Hierarchy
+     * user access should be deleted as well.
+     * 
+     */
+    public static void deletehUserAccess(List<User_Access__c> uaList){
+        Map<Id, Operational_Hierarchy__c> opHierachies = new Map<Id, Operational_Hierarchy__c>([
+            SELECT Id, Node_Code__c, Hierarchy__c 
+            FROM Operational_Hierarchy__c 
+            WHERE Id IN (SELECT Operational_Hierarchy__c FROM User_Access__c WHERE Id IN :uaList)
+        ]);
+        
+        /*create a list of user Ids
+         */
+        List<Id> userList =new List<Id>();
+        for(User_Access__c u : uaList)
+        {
+           userList.add(u.User__c); 
+        }
+        /* get the hierarchy user access for the hierarchies for corresponding ops hierarchies
+         */
+        Map<Id, Set<Id>> mapHierToHua = new Map<Id, Set<Id>>();
+        List<Hierarchy_User_Access__c> huaList = new List<Hierarchy_User_Access__c>();
+        for(Hierarchy_User_Access__c hUa : [SELECT Hierarchy__c, Id, User__c 
+                                           FROM Hierarchy_User_Access__c WHERE Hierarchy__c IN 
+                                           (SELECT Hierarchy__c FROM Operational_Hierarchy__c WHERE Id IN : opHierachies.keySet() )
+                                           AND User__c IN : userList ])
+            
+        {
+            huaList.add(hUa);
+        }
+        delete huaList;
+        
+    }
+}
