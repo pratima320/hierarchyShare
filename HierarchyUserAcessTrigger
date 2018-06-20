@@ -1,0 +1,72 @@
+trigger HierarchyUserAcessTrigger on Hierarchy_User_Access__c (before delete) {
+   /* A map of hierarchy records from the hierarchy user access
+   */
+   
+   Map<Id, rkl__RK_Hierarchy_Node__c> hierarchyMap = new Map<Id, rkl__RK_Hierarchy_Node__c>([
+        SELECT Id, Name FROM rkl__RK_Hierarchy_Node__c WHERE Id 
+        IN 
+        (SELECT Hierarchy__c  FROM Hierarchy_User_Access__c WHERE Id IN: Trigger.Old)
+    ]);
+    
+    /* map of hierId and Corrective actions list , Site__c is the lookup 
+    *to Hierarchy from corrective actions
+    */
+    Map<Id, List<Corrective_Actions__c>> hierCorrMap = new Map<Id, List<Corrective_Actions__c>>();
+    
+    for(Corrective_Actions__c corr : [SELECT Id, Site__c FROM Corrective_Actions__c WHERE Site__c IN: hierarchyMap.keySet()] ){
+        if(hierCorrMap.containsKey(corr.Site__c)){
+            List<Corrective_Actions__c> corrList = hierCorrMap.get(corr.Site__c);
+            corrList.add(corr);
+        }else{
+            List<Corrective_Actions__c> corrList = new List<Corrective_Actions__c>();
+            corrList.add(corr);
+            hierCorrMap.put(corr.Site__c, corrList);
+        }
+    }
+    
+    /*
+we need to get the corrective action share records to delete them
+*/
+    /* it has SOQL inside a loop=-- avoid this approach
+     * List<Corrective_Actions__Share> corrShareList = new List<Corrective_Actions__Share>();
+    for(Id rkHier : hierCorrMap.keySet())
+    {
+        
+        for(Corrective_Actions__Share corrShare : [SELECT ParentId, UserOrGroupId, RowCause FROM Corrective_Actions__Share
+                                                   WHERE ParentId IN :hierCorrMap.get(rkHier) AND RowCause = 'HierCorrectiveAction'])
+        {
+            corrShareList.add(corrShare);
+            
+        }
+        
+    }
+    delete corrShareList;
+*/
+    /* 
+     * instead of using a SOQL inside a for loop, use a nested loop and cerate a list of child records
+     * to be deleted from the parent record
+     */
+    Set<Id> corrIdSet = new Set<Id>();
+    for(List<Corrective_Actions__c> corrList : hierCorrMap.values() )
+    {
+        for(Corrective_Actions__c corr : corrList)
+        {
+            corrIdSet.add(corr.Id);
+        }
+        
+    }
+    
+    List<Corrective_Actions__Share> corrShareList = new List<Corrective_Actions__Share>();
+    
+    for(Corrective_Actions__Share corrShare : [SELECT ParentId, UserOrGroupId, RowCause FROM Corrective_Actions__Share
+                                               WHERE ParentId IN : corrIdSet AND RowCause = 'HierCorrectiveAction'])
+    {
+        corrShareList.add(corrShare);
+    }
+    
+    
+    
+    
+    
+    
+}
