@@ -1,0 +1,56 @@
+/*Modification date         Developer           Detail
+ *************************************************************************************************************************************************************
+   
+    06/15/2018              Pratima S           Adding before delete, adding new logic to count Open Dm Corrective actions
+                                                on insert, update and delete using custom setting Dm_Healthcheck__c as
+                                                a switch - corrActionInsert, corrActionDelete
+                                                The parent Lookup is Hierarchy object(Site__c) and corrective action is
+                                                the child. Counting the number of Corrective actions with CloseDate=null 
+                                                looking at specific record type of correctiev actions,
+                                                then updating a field on parent record
+                                                Also using  
+                                                Schema.SObjectType.Corrective_Actions__c.getRecordTypeInfosByDeveloperName().get('Dm_Financial_Healthcheck')
+**************************************************************************************************************************************************************
+*/
+
+public class CorrectiveActionTriggerhelper{
+  
+  public static void openDmCorrectiveActions(List<Corrective_Actions__c> corrList){
+    
+    /*Getting a list of hierarchy records in a map(parent of corrective action(Site__c) here
+    */
+    Map<Id, rkl__RK_Hierarchy_Node__c> hierarchies = new Map<Id, rkl__RK_Hierarchy_Node__c>([
+                      SELECT Id, Dm_Open_Corrective_Actions__c FROM rkl__RK_Hierarchy_Node__c WHERE
+                      Id IN
+                      (SELECT Site__c FROM Corrective_Actions__c WHERE Id IN : corrList)
+                      ]);
+     
+     /* Use Schema method to get id of corrective action we need to perform the calculation on
+     * */
+     Id RecordTypeIdhealth = Schema.SObjectType.Corrective_Actions__c.getrecordTypeInfosByDeveloperName().get('Dm_Financial_Healthcheck').getRecordTypeId();
+     
+     /* We use AggregrateResult to get the sum of the counts with given conditions
+     */
+     
+     for(AggregateResult ag : [SELECT Count(Id), Site__c FROM Corrective_Actions__c
+                                WHERE Close_date__c = null AND Site__c IN : hierarchies.keySet()
+                                AND RecordTypeId = :RecordTypeIdhealth
+                                GROUP BY Site__c])
+     {
+        Id hierId = (Id)ag.get('Site__c');
+        hierarchies.get(hierId).Dm_Open_Corrective_Actions__c = (Ineteger)ag.get('expr0');
+     }
+     try{
+        if(hierarchies.size()>0)
+          {
+            update hierarchies.values();
+          }
+        }
+        catch(Exception e){
+            System.debug('Exception : '=e.getMessage());
+        }
+   }
+      
+                                  
+
+}
